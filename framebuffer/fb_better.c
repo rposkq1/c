@@ -20,9 +20,7 @@
 /////////////////////////////////////////////////////GLOBAL
 
 uint32_t framebuffer[STATIC_HEIGHT][STATIC_WIDTH]; // 2D array for the pixel data
-int fb_fd;
-struct fb_var_screeninfo vinfo;
-unsigned char *fb_ptr;
+FrameBuffer *globalFb; //same ptr just for cleanups
 
 ///////////////////////////////////////////////////////STRUCTS//AND//ENUMS
 enum Render {
@@ -37,6 +35,19 @@ typedef struct {
 	bool seed_set;	
 	enum Render render;
 } Args;
+
+typedef struct
+  {
+  int fd;
+  int w;
+  int h;
+  int fb_data_size;
+  uint8_t *fb_data;
+  char *fbdev;
+  int fb_bytes;
+  int stride;
+  bool linear;
+  } FrameBuffer; 
 
 //////////////////////////////////////////////////////FUNCTIONS
 Args parseArgs(int argc, char **argv){
@@ -71,36 +82,18 @@ Args parseArgs(int argc, char **argv){
 
 	return args;
 }
-//////////////////////FRAMEBUFFER BETER CODE BC NOT MINE
-typedef struct
-  {
-  int fd;
-  int w;
-  int h;
-  int fb_data_size;
-  uint8_t *fb_data;
-  char *fbdev;
-  int fb_bytes;
-  int stride;
-  bool linear;
-  } FrameBuffer; 
-
-/*==========================================================================
-  framebuffer_create
-*==========================================================================*/
+////////////////////////////////////////////////////////////////////framebuffer_create
 FrameBuffer *framebuffer_create (const char *fbdev)
   {
   FrameBuffer *self = malloc (sizeof (FrameBuffer));
-  self->fbdev = strdup (fbdev);
+  self->fbdev = strdup(fbdev);
   self->fd = -1;
   self->fb_data = NULL;
   self->fb_data_size = 0;
   return self;
   }
 
-/*==========================================================================
-  framebuffer_init
-*==========================================================================*/
+/////////////////////////////////////////////////////////////////////framebuffer_init
 bool framebuffer_init (FrameBuffer *self, char **error)
   {
   bool ret = FALSE;
@@ -134,15 +127,13 @@ bool framebuffer_init (FrameBuffer *self, char **error)
   else
     {
     if (error)
-      asprintf (error, "Can't open framebuffer: %s", strerror (errno));
+	asprintf (error, "Can't open framebuffer: %s", strerror (errno));
+	
     }
   return ret;
   }
 
-
-/*==========================================================================
-  framebuffer_deinit
-*==========================================================================*/
+///////////////////////////////////////////////////////////////////////framebuffer_deinit
 void framebuffer_deinit (FrameBuffer *self)
   {
   if (self)
@@ -161,9 +152,7 @@ void framebuffer_deinit (FrameBuffer *self)
   }
 
 
-/*==========================================================================
-  framebuffer_destroy
-*==========================================================================*/
+////////////////////////////////////////////////////////////////////////////framebuffer_destroy
 void framebuffer_destroy (FrameBuffer *self)
   {
   framebuffer_deinit (self);
@@ -174,18 +163,15 @@ void framebuffer_destroy (FrameBuffer *self)
     }
   }
 
-//renderers
+/////////////////////////////////////////////////////////////////////////////////renderers
 void renderNoScaling(FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH]) {
 
     for (int y = 0; y < STATIC_HEIGHT; y++) {
         for (int x = 0; x < STATIC_WIDTH; x++) {
-            // Get the color from the static framebuffer
             uint32_t color = fb[y][x];
 
-            // Calculate the position directly for the graphical framebuffer
             long location = (x * self->fb_bytes + (y * self->stride));
 
-            // Check bounds to ensure we don't write outside the framebuffer
                 *((uint32_t *)(self->fb_data + location)) = color;  // Set the pixel color
         }
     }
@@ -216,7 +202,6 @@ void render(FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH]) {
 }
 
 void renderCenter(FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH]) {
-    int line_length = self->w * self->fb_bytes;
     float scale_x = (float)self->w / STATIC_WIDTH;
     float scale_y = (float)self->h / STATIC_HEIGHT;
     float scale = (scale_x < scale_y) ? scale_x : scale_y;
@@ -231,7 +216,7 @@ void renderCenter(FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH]) {
             int sx = (int)(x - offset_x / scale);
             int sy = (int)(y - offset_y / scale);
 
-            long location = (x * self->fb_bytes + (y * line_length));
+            long location = (x * self->fb_bytes + (y * self->stride));
             uint32_t color;
 
             if (sx < STATIC_WIDTH && sy < STATIC_HEIGHT) {
@@ -261,9 +246,9 @@ void randomframebuffer(uint32_t (*fb)[STATIC_WIDTH]) {
 	for (int y = 0; y < STATIC_HEIGHT; y++) {
 		for (int x = 0; x < STATIC_WIDTH; x++) {
 			//fb[y][x] = rand();
-			uint8_t red = (uint8_t)random();
-			uint8_t green = (uint8_t)random();
-			uint8_t blue = (uint8_t)random();
+			uint8_t red = (uint8_t)rand();
+			uint8_t green = (uint8_t)rand();
+			uint8_t blue = (uint8_t)rand();
 			fb[y][x] = (red << 16) | (green << 8) | blue;
 		}
 	}
@@ -276,21 +261,27 @@ void clearframebuffer(uint32_t (*fb)[STATIC_WIDTH]) {
 		}
 	}
 }
-
-void handleSignal(int signum) {
-	munmap(fb_ptr, vinfo.yres_virtual * vinfo.xres_virtual * vinfo.bits_per_pixel / 8); 
-	close(fb_fd);
-	endwin();
-	exit(signum);
+void cleanup(FrameBuffer *fb){
+	printf("\033[?25h");
+	framebuffer_deinit (fb);
+	framebuffer_destroy (fb);
+	endwin(); 
+	system("clear");
+	//printf("\033[H\033[J");
 }
 
+
+void handleSignal(int signum) {
+	cleanup(globalFb);
+	exit(signum);
+}
 
 int main(int argc, char **argv) {
 	signal(SIGINT, handleSignal); // Ctrl+C
 	signal(SIGTERM, handleSignal); // teminate signal
 	
 	Args args = parseArgs(argc, argv);
-	args.seed_set==true ? srandom(args.seed) : srandom(time(0)) ;
+	args.seed_set==true ? srand(args.seed) : srand(time(0)) ;
 
 	//ncurses
 	initscr();		// Start ncurses mode
@@ -299,12 +290,12 @@ int main(int argc, char **argv) {
 	keypad(stdscr, TRUE);	// Enable special keys
 	nodelay(stdscr, TRUE);	// Make getch() non-blocking
 
-	const char *fbdev = "/dev/fb0";
-	FrameBuffer *fb = framebuffer_create (fbdev);
+	const char* fbdev = "/dev/fb0";
+	FrameBuffer *fb = framebuffer_create(fbdev);
+	globalFb = fb;
 	char *error = NULL;
 	framebuffer_init (fb, &error);
 	if (error != NULL) goto cleanup;
-
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 	printf("\033[?25l");//hide cursor
@@ -336,23 +327,17 @@ int main(int argc, char **argv) {
 		// Render the framebuffer array to the framebuffer device
 		if(args.render == SCALE){
 			render(fb, framebuffer);
-//		}else if(args.render == CENTRED){
-//			renderCenter(framebuffer, fb_ptr, vinfo);	
-//		}else if(args.render == NO_SCALING){
-//			renderNoScaling(framebuffer, fb_ptr, vinfo);
+		}else if(args.render == CENTRED){
+			renderCenter(fb, framebuffer);
+		}else if(args.render == NO_SCALING){
+			renderNoScaling(fb, framebuffer);
 		}
 	}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Clean up
 	cleanup:
-	
-	printf("\033[?25h");
-	framebuffer_deinit (fb);
-	framebuffer_destroy (fb);
-	endwin(); 
-	system("clear");
-	//printf("\033[H\033[J");
+	cleanup(fb);	
 
 	return 0;
 }
