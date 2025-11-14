@@ -1,7 +1,7 @@
 # Compiler
 CC = gcc
 
-# Compiler flags
+# flags
 CFLAGS = -Wall -Wextra -g -pedantic -Wno-deprecated-declarations -Os
 LDFLAGS = -lncurses
 
@@ -24,6 +24,10 @@ $(TARGET): $(OBJ)
 # Compiling the source files into object files
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# format src files
+format:
+	clang-format -i $(SRC) --style=gnu
 
 # Clean target to remove object files and executable
 clean:
