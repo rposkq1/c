@@ -18,7 +18,7 @@
 #define STATIC_HEIGHT 100
 
 /////////////////////////////////////////////////////GLOBAL
-
+const char *fbdev = "/dev/fb0";
 uint32_t framebuffer[STATIC_HEIGHT]
                     [STATIC_WIDTH]; // 2D array for the pixel data
 
@@ -334,8 +334,8 @@ cleanup (FrameBuffer *fb)
   // printf("\033[H\033[J");
 }
 
-// pGlobalFb
-FrameBuffer *pGlobalFb; // same ptr just for cleanups
+// pGlobalFb same ptr as fb in main just for cleanups
+FrameBuffer *pGlobalFb;
 
 void
 handleSignal (int signum)
@@ -360,7 +360,6 @@ main (int argc, char **argv)
   keypad (stdscr, TRUE);  // Enable special keys
   nodelay (stdscr, TRUE); // Make getch() non-blocking
 
-  const char *fbdev = "/dev/fb0";
   FrameBuffer *fb = framebuffer_create (fbdev);
   pGlobalFb = fb;
   char *error = NULL;
@@ -381,7 +380,6 @@ main (int argc, char **argv)
         {
         case 'w':
         case 'W':
-          // Create the rainbow pattern in the 2D array
           createRainbow (framebuffer);
           break;
         case 'e':
