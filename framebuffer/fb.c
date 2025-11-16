@@ -19,7 +19,7 @@
 
 /////////////////////////////////////////////////////GLOBAL
 const char *fbdev = "/dev/fb0";
-uint32_t framebuffer[STATIC_HEIGHT]
+uint32_t frame[STATIC_HEIGHT]
                     [STATIC_WIDTH]; // 2D array for the pixel data
 
 ///////////////////////////////////////////////////////STRUCTS//AND//ENUMS
@@ -380,21 +380,21 @@ main (int argc, char **argv)
         {
         case 'w':
         case 'W':
-          createRainbow (framebuffer);
+          createRainbow (frame);
           break;
         case 'e':
         case 'E':
-          createCheckerboard (framebuffer);
+          createCheckerboard (frame);
           break;
         case 'r':
         case 'R':
-          randomframebuffer (framebuffer);
+          randomframebuffer (frame);
           break;
         case 'c':
-          fillWithColorFramebuffer (framebuffer, 0x0);
+          fillWithColorFramebuffer (frame, 0x0);
           break;
         case 'C':
-          fillWithColorFramebuffer (framebuffer, 0xffffffff);
+          fillWithColorFramebuffer (frame, 0xffffffff);
           break;
         case 'q':
           goto cleanup;
@@ -402,15 +402,15 @@ main (int argc, char **argv)
       // Render the framebuffer array to the framebuffer device
       if (args.render == SCALE)
         {
-          render (fb, framebuffer);
+          render (fb, frame);
         }
       else if (args.render == CENTRED)
         {
-          renderCenter (fb, framebuffer);
+          renderCenter (fb, frame);
         }
       else if (args.render == NO_SCALING)
         {
-          renderNoScaling (fb, framebuffer);
+          renderNoScaling (fb, frame);
         }
     }
 
