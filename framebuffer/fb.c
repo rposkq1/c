@@ -14,15 +14,20 @@
 #include <time.h>
 #include <unistd.h>
 
-#define STATIC_WIDTH 100
-#define STATIC_HEIGHT 100
+#define STATIC_WIDTH 100 //default and maximum width
+#define STATIC_HEIGHT 56 //default and maximum height
 
-/////////////////////////////////////////////////////GLOBAL
 const char *fbdev = "/dev/fb0";
-uint32_t frame[STATIC_HEIGHT]
-                    [STATIC_WIDTH]; // 2D array for the pixel data
 
 ///////////////////////////////////////////////////////STRUCTS//AND//ENUMS
+typedef struct
+{
+  uint32_t fb[STATIC_HEIGHT][STATIC_WIDTH]; // pixel data
+  uint32_t fb_size;
+  uint16_t x, y;
+} Frame;
+Frame frame; //make a global frame
+
 enum Render
 {
   SCALE = 1,
@@ -35,6 +40,8 @@ typedef struct
   bool help;
   int seed;
   bool seed_set;
+  uint16_t x, y;
+  bool x_set, y_set;
   enum Render render;
 } Args;
 
@@ -57,8 +64,9 @@ parseArgs (int argc, char **argv)
 {
   Args args;
   args.help = false;
-  args.seed = 0;
   args.seed_set = false;
+  args.x_set = false;
+  args.y_set = false;
   args.render = SCALE;
 
   for (int i = 1; i < argc; i++)
@@ -66,6 +74,32 @@ parseArgs (int argc, char **argv)
       if (strcmp (argv[i], "-h") == 0)
         {
           args.help = true;
+        }
+      else if (strcmp (argv[i], "-x") == 0 || strcmp (argv[i], "-X") == 0)
+        {
+          args.x_set = true;
+          if (++i < argc && atoi(argv[i]) <= STATIC_WIDTH)
+            {
+              args.x = atoi (argv[i]);
+            }
+          else
+            {
+              fprintf (stderr, "no x (width) after -x flag, and x cannot be bigger than %d\n", STATIC_WIDTH);
+              exit (1);
+            }
+        }
+      else if (strcmp (argv[i], "-y") == 0 || strcmp (argv[i], "-Y") == 0)
+        {
+          args.y_set = true;
+          if (++i < argc && atoi(argv[i]) <= STATIC_HEIGHT)
+            {
+              args.y = atoi (argv[i]);
+            }
+          else
+            {
+              fprintf (stderr, "no y (height) after -y flag and y cannot be bigger than %d\n", STATIC_HEIGHT);
+              exit (1);
+            }
         }
       else if (strcmp (argv[i], "-s") == 0)
         {
@@ -98,6 +132,7 @@ parseArgs (int argc, char **argv)
 
   return args;
 }
+
 ////////////////////////////////////////////////////////////////////framebuffer_create
 FrameBuffer *
 framebuffer_create (const char *fbdev)
@@ -184,14 +219,14 @@ framebuffer_destroy (FrameBuffer *self)
 
 /////////////////////////////////////////////////////////////////////////////////renderers
 void
-renderNoScaling (FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH])
+renderNoScaling (FrameBuffer *self, Frame *fb)
 {
 
-  for (int y = 0; y < STATIC_HEIGHT; y++)
+  for (int y = 0; y < fb->y; y++)
     {
-      for (int x = 0; x < STATIC_WIDTH; x++)
+      for (int x = 0; x < fb->x; x++)
         {
-          uint32_t color = fb[y][x];
+          uint32_t color = fb->fb[y][x];
 
           long location = (x * self->fb_bytes + (y * self->stride));
 
@@ -202,10 +237,10 @@ renderNoScaling (FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH])
 }
 
 void
-render (FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH])
+render (FrameBuffer *self, Frame *fb)
 {
-  float scale_x = (float)self->w / STATIC_WIDTH;
-  float scale_y = (float)self->h / STATIC_HEIGHT;
+  float scale_x = (float)self->w / fb->x;
+  float scale_y = (float)self->h / fb->y;
   float scale = (scale_x < scale_y) ? scale_x : scale_y;
 
   for (int y = 0; y < self->h; y++)
@@ -218,9 +253,9 @@ render (FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH])
           long location = (x * self->fb_bytes + (y * self->stride));
           uint32_t color;
 
-          if (sx < STATIC_WIDTH && sy < STATIC_HEIGHT)
+          if (sx < fb->x && sy < fb->y)
             {
-              color = fb[sy][sx];
+              color = fb->fb[sy][sx];
             }
           else
             {
@@ -233,15 +268,15 @@ render (FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH])
 }
 
 void
-renderCenter (FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH])
+renderCenter (FrameBuffer *self, Frame *fb)
 {
-  float scale_x = (float)self->w / STATIC_WIDTH;
-  float scale_y = (float)self->h / STATIC_HEIGHT;
+  float scale_x = (float)self->w / fb->x;
+  float scale_y = (float)self->h / fb->y;
   float scale = (scale_x < scale_y) ? scale_x : scale_y;
 
   // Calculate offsets to center the content
-  int offset_x = (self->w - (STATIC_WIDTH * scale)) / 2;
-  int offset_y = (self->h - (STATIC_HEIGHT * scale)) / 2;
+  int offset_x = (self->w - (fb->x * scale)) / 2;
+  int offset_y = (self->h - (fb->y * scale)) / 2;
 
   for (int y = 0; y < self->h; y++)
     {
@@ -253,9 +288,9 @@ renderCenter (FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH])
           long location = (x * self->fb_bytes + (y * self->stride));
           uint32_t color;
 
-          if (sx < STATIC_WIDTH && sy < STATIC_HEIGHT)
+          if (sx < fb->x && sy < fb->y)
             {
-              color = fb[sy][sx];
+              color = fb->fb[sy][sx];
             }
           else
             {
@@ -269,56 +304,56 @@ renderCenter (FrameBuffer *self, uint32_t (*fb)[STATIC_WIDTH])
 }
 
 void
-createRainbow (uint32_t (*fb)[STATIC_WIDTH])
+createRainbow (Frame *fb)
 {
-  for (int y = 0; y < STATIC_HEIGHT; y++)
+  for (int y = 0; y < fb->y; y++)
     {
-      for (int x = 0; x < STATIC_WIDTH; x++)
+      for (int x = 0; x < fb->x; x++)
         {
-          uint8_t red = (x * 255) / STATIC_WIDTH;
-          uint8_t green = (y * 255) / STATIC_HEIGHT;
-          uint8_t blue = 255 - ((x * 255) / STATIC_WIDTH);
-          fb[y][x] = (red << 16) | (green << 8) | blue;
+          uint8_t red = (x * 255) / fb->x;
+          uint8_t green = (y * 255) / fb->y;
+          uint8_t blue = 255 - ((x * 255) / fb->x);
+          fb->fb[y][x] = (red << 16) | (green << 8) | blue;
         }
     }
 }
 
 void
-randomframebuffer (uint32_t (*fb)[STATIC_WIDTH])
+randomframebuffer (Frame *fb)
 {
-  for (int y = 0; y < STATIC_HEIGHT; y++)
+  for (int y = 0; y < fb->y; y++)
     {
-      for (int x = 0; x < STATIC_WIDTH; x++)
+      for (int x = 0; x < fb->x; x++)
         {
           uint8_t red = (uint8_t)rand ();
           uint8_t green = (uint8_t)rand ();
           uint8_t blue = (uint8_t)rand ();
-          fb[y][x] = (red << 16) | (green << 8) | blue;
+          fb->fb[y][x] = (red << 16) | (green << 8) | blue;
           // fb[y][x] = rand();
         }
     }
 }
 
 void
-createCheckerboard (uint32_t (*fb)[STATIC_WIDTH])
+createCheckerboard (Frame *fb)
 {
-  for (int y = 0; y < STATIC_HEIGHT; y++)
+  for (int y = 0; y < fb->y; y++)
     {
-      for (int x = 0; x < STATIC_WIDTH; x++)
+      for (int x = 0; x < fb->x; x++)
         {
-          fb[y][x] = ((x % 2 == 0) == (y % 2 == 0)) ? 0xffffffff : 0x0;
+          fb->fb[y][x] = ((x % 2 == 0) == (y % 2 == 0)) ? 0xffffffff : 0x0;
         }
     }
 }
 
 void
-fillWithColorFramebuffer (uint32_t (*fb)[STATIC_WIDTH], uint32_t color)
+fillWithColorFramebuffer (Frame *fb, uint32_t color)
 {
-  for (int y = 0; y < STATIC_HEIGHT; y++)
+  for (int y = 0; y < fb->y; y++)
     {
-      for (int x = 0; x < STATIC_WIDTH; x++)
+      for (int x = 0; x < fb->x; x++)
         {
-          fb[y][x] = color;
+          fb->fb[y][x] = color;
         }
     }
 }
@@ -327,7 +362,6 @@ void
 cleanup (FrameBuffer *fb)
 {
   printf ("\033[?25h");
-  framebuffer_deinit (fb);
   framebuffer_destroy (fb);
   endwin ();
   system ("clear");
@@ -336,7 +370,6 @@ cleanup (FrameBuffer *fb)
 
 // pGlobalFb same ptr as fb in main just for cleanups
 FrameBuffer *pGlobalFb;
-
 void
 handleSignal (int signum)
 {
@@ -353,14 +386,20 @@ main (int argc, char **argv)
   Args args = parseArgs (argc, argv);
   args.seed_set == true ? srand (args.seed) : srand (time (0));
 
-  // ncurses
-  initscr ();             // Start ncurses mode
-  cbreak ();              // Disable line buffering
-  noecho ();              // Don't echo input
-  keypad (stdscr, TRUE);  // Enable special keys
-  nodelay (stdscr, TRUE); // Make getch() non-blocking
+  if (args.y_set)
+    frame.y = args.y;
+  else
+    frame.y = STATIC_HEIGHT;
+
+  if (args.x_set)
+    frame.x = args.x;
+  else
+    frame.x = STATIC_WIDTH;
+
+  frame.fb_size = sizeof (frame.fb) * frame.y * frame.x;
 
   FrameBuffer *fb = framebuffer_create (fbdev);
+
   pGlobalFb = fb;
   char *error = NULL;
   framebuffer_init (fb, &error);
@@ -368,6 +407,14 @@ main (int argc, char **argv)
     goto cleanup;
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  // ncurses
+  initscr ();             // Start ncurses mode
+  cbreak ();              // Disable line buffering
+  noecho ();              // Don't echo input
+  keypad (stdscr, TRUE);  // Enable special keys
+  nodelay (stdscr, TRUE); // Make getch() non-blocking
+
   printf ("\033[?25l"); // hide cursor
   move (0, 0);
   refresh ();
@@ -380,44 +427,38 @@ main (int argc, char **argv)
         {
         case 'w':
         case 'W':
-          createRainbow (frame);
+          createRainbow (&frame);
           break;
         case 'e':
         case 'E':
-          createCheckerboard (frame);
+          createCheckerboard (&frame);
           break;
         case 'r':
         case 'R':
-          randomframebuffer (frame);
+          randomframebuffer (&frame);
           break;
         case 'c':
-          fillWithColorFramebuffer (frame, 0x0);
+          fillWithColorFramebuffer (&frame, 0x0);
           break;
         case 'C':
-          fillWithColorFramebuffer (frame, 0xffffffff);
+          fillWithColorFramebuffer (&frame, 0xffffffff);
           break;
         case 'q':
           goto cleanup;
         }
       // Render the framebuffer array to the framebuffer device
       if (args.render == SCALE)
-        {
-          render (fb, frame);
-        }
+        render (fb, &frame);
       else if (args.render == CENTRED)
-        {
-          renderCenter (fb, frame);
-        }
+        renderCenter (fb, &frame);
       else if (args.render == NO_SCALING)
-        {
-          renderNoScaling (fb, frame);
-        }
+        renderNoScaling (fb, &frame);
     }
 
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // Clean up
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Clean up
 cleanup:
   cleanup (fb);
 
-  return 0;
+ return 0;
 }
