@@ -78,9 +78,9 @@ parseArgs (int argc, char **argv)
       else if (strcmp (argv[i], "-x") == 0 || strcmp (argv[i], "-X") == 0)
         {
           args.x_set = true;
-          if (++i < argc && atoi(argv[i]) <= STATIC_WIDTH)
+          if (++i < argc && atoi(argv[i]) > 0 && atoi(argv[i]) <= STATIC_WIDTH)
             {
-              args.x = atoi (argv[i]);
+              args.x = (int)strtol(argv[i], NULL, 10);
             }
           else
             {
@@ -91,9 +91,9 @@ parseArgs (int argc, char **argv)
       else if (strcmp (argv[i], "-y") == 0 || strcmp (argv[i], "-Y") == 0)
         {
           args.y_set = true;
-          if (++i < argc && atoi(argv[i]) <= STATIC_HEIGHT)
+          if (++i < argc && atoi(argv[i]) > 0 && atoi(argv[i]) <= STATIC_HEIGHT)
             {
-              args.y = atoi (argv[i]);
+              args.y = atoi(argv[i]);
             }
           else
             {
