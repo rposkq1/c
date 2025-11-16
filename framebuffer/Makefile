@@ -27,7 +27,7 @@ $(TARGET): $(OBJ)
 
 # format src files
 format:
-	clang-format -i $(SRC) --style=gnu
+	clang-format -i $(SRC) --style=webkit
 
 # Clean target to remove object files and executable
 clean:
